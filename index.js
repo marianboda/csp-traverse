@@ -7,29 +7,55 @@ var chan = csp.chan
 var take = csp.take
 var put = csp.put
 
-// var buffers = csp.buffers
-// var alts = csp.alts
+var buffers = csp.buffers
+var alts = csp.alts
 var putAsync = csp.putAsync
 
-let dirsToProcessCh = chan(8)
+let filesFoundCh = chan(20)
+let filesCh = chan()
+let dirsCh = chan()
 
-let ch = chan(3)
-
-go(function *(){
+let loggerGen = function *(){
   while(true) {
-    console.log(' <- ' + (yield take(dirsToProcessCh)))
+    yield csp.timeout(250)
+    let f = yield take(filesCh)
+    console.log(' <- ' + f.dir + ' / ' + f.filename + ' ' + f.stats.size)
   }
-})
+}
 
+let fileStatGen = function *(){
+  while(true) {
+    let f = yield(filesFoundCh)
+    fs.lstat(f.path, (err, res) => {
+      let ch = res.isDirectory() ? dirsCh : filesCh
+      putAsync(ch, Object.assign({}, f, {stats: res}))
+    })
+  }
+}
 
-  fs.readdir('.', function (err, files) {
-    console.log('sranda')
+let dirScanGen = function *(){
+  while(true) {
+    let d = yield dirsCh
+    console.log('DIR ' + d.filename)
+  }
+}
+
+function scanDir(path) {
+  fs.readdir(path, (err, files) => {
+    console.log('rdHandler')
     go(function *(){
+      console.log('in goroutine')
       for (let f of files) {
+        let file = { path: path+'/'+f, dir: path, filename: f, }
         console.log('+++',f)
-        yield put(dirsToProcessCh, f)
+        yield put(filesFoundCh, file)
       }
     })
   })
+}
 
-setTimeout(() => console.log('done'), 4000)
+go(loggerGen)
+go(fileStatGen)
+go(dirScanGen)
+scanDir(process.env.HOME)
+setTimeout(() => console.log('4 secs passed'), 4000)
