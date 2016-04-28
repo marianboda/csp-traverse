@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/marianboda/csp-traverse#readme",
   "dependencies": {
+    "colors": "^1.1.2",
     "js-csp": "^0.5.0"
   }
 }
