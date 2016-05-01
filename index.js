@@ -15,16 +15,23 @@ var putAsync = csp.putAsync
 var colors = require('colors')
 var path = require('path')
 
-let filesFoundCh = chan()
-let filesCh = chan()
-let dirsCh = chan(2048)
+let coner = (err) => console.error(err)
+let filesFoundCh = chan(1, undefined, coner)
+let filesCh = chan(1, undefined, coner)
+let dirsCh = chan(2048, undefined, coner)
+
+process.on('beforeExit', () => console.log(('files found: ' + filesFound).blue))
+
 
 let stat = chanelify(fs.lstat)
 let readdir = chanelify(fs.readdir)
 
+let filesFound = 0
+
 let loggerGen = function *(){
   while(true) {
     let f = yield take(filesCh)
+    filesFound++
     console.log(' <- ' + f.dir + ' / ' + f.filename + ' ' + f.stats.size)
   }
 }
@@ -37,12 +44,14 @@ let fileStatGen = function *(){
     let ch = s.isDirectory() ? dirsCh : filesCh
     yield csp.timeout(50)
     yield put(ch, Object.assign({}, f, {stats: s}))
-    console.log(('stat put on channel. DirsInQueue: '+dirsCh.buf.count()).yellow)
   }
 }
 
 let dirScanGen = function *(){
   while(true) {
+    // console.log(('DirsInQueue: '+dirsCh.buf.count()).yellow)
+    // if (dirsCh.buf.count() == 0)
+    //   break;
     let d = yield take(dirsCh)
     console.log(('SCAN DIR ' + d.filename).yellow)
     let files = yield take(readdir(d.path))
@@ -52,13 +61,16 @@ let dirScanGen = function *(){
       yield put(filesFoundCh, file)
     }
   }
+  console.log("dirScanGen exited")
 }
+
+
+let scanPath = path.join(process.env.HOME, 'temp')
+putAsync(dirsCh, { path: scanPath, dir: path.dirname(scanPath), filename: path.basename(scanPath), })
 
 go(loggerGen)
 go(fileStatGen)
 go(dirScanGen)
 
-let scanPath = path.join(process.env.HOME, 'temp')
-putAsync(dirsCh, { path: scanPath, dir: path.dirname(scanPath), filename: path.basename(scanPath), })
 
-setTimeout(() => console.log('7 secs passed'), 7000)
+// setTimeout(() => console.log('7 secs passed'), 7000)
